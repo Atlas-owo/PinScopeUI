@@ -2,11 +2,13 @@ from __future__ import annotations
 from PySide6.QtCore import QObject, Signal
 from .model.design import Design
 from .model.pin import Pin
+from .model.gesture import GestureConfig
 
 class AppState(QObject):
     design_changed = Signal()
     selection_changed = Signal()
-    pin_changed = Signal(int)  # Emits the index of the changed pin
+    pin_changed = Signal(int)
+    globals_changed = Signal()
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -49,3 +51,16 @@ class AppState(QObject):
         if self._selected_indices:
             self._selected_indices.clear()
             self.selection_changed.emit()
+
+    def set_motor_speed(self, start: int, end: int) -> None:
+        self._design.motor_start_speed = start
+        self._design.motor_end_speed = end
+        self.globals_changed.emit()
+
+    def set_push_config(self, config: GestureConfig) -> None:
+        self._design.push_config = config
+        self.globals_changed.emit()
+
+    def set_pull_config(self, config: GestureConfig) -> None:
+        self._design.pull_config = config
+        self.globals_changed.emit()

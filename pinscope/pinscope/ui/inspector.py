@@ -24,9 +24,10 @@ class InspectorPanel(QWidget):
         height_layout = QHBoxLayout(height_group)
         
         self.height_slider = QSlider(Qt.Orientation.Horizontal)
-        self.height_slider.setRange(0, 255)
+        self.height_slider.setRange(0, 200)
         self.height_spinbox = QSpinBox()
-        self.height_spinbox.setRange(0, 255)
+        self.height_spinbox.setRange(0, 200)
+        self.height_spinbox.setSuffix(" mm")
         
         self.height_slider.valueChanged.connect(self.height_spinbox.setValue)
         self.height_spinbox.valueChanged.connect(self.height_slider.setValue)

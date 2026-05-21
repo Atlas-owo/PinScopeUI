@@ -9,8 +9,8 @@ class PinItem(QGraphicsRectItem):
         super().__init__(QRectF(x, y, size, size))
         self.index = index
         self.setFlag(QGraphicsRectItem.GraphicsItemFlag.ItemIsSelectable, True)
-        self.setBrush(QBrush(QColor(0, 0, 0)))
-        self.setPen(QPen(QColor(50, 50, 50)))
+        self.setBrush(QBrush(QColor(255, 255, 255)))
+        self.setPen(QPen(QColor(90, 90, 90), 1))
 
     def itemChange(self, change, value):
         if change == QGraphicsRectItem.GraphicsItemChange.ItemSelectedChange:
@@ -22,7 +22,6 @@ class PinItem(QGraphicsRectItem):
 
     def update_from_pin(self, pin):
         self.setBrush(QBrush(QColor(pin.r, pin.g, pin.b)))
-        # Optional: could visually indicate height later
 
 class Grid2D(QGraphicsView):
     def __init__(self, app_state: AppState, parent=None):
@@ -30,17 +29,17 @@ class Grid2D(QGraphicsView):
         self.app_state = app_state
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
-        
-        self.cell_size = 50.0
-        self.padding = 5.0
-        
+
+        self.cell_size = 36.0
+        self.padding = 3.0
+
         self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
-        
+        self.setBackgroundBrush(QBrush(QColor(60, 60, 60)))
+
         self.pin_items: list[PinItem] = []
         self._updating_selection = False
         self._init_grid()
-        
-        # Connect signals
+
         self.scene.selectionChanged.connect(self._on_scene_selection_changed)
         self.app_state.design_changed.connect(self._on_design_changed)
         self.app_state.pin_changed.connect(self._on_pin_changed)
