@@ -20,7 +20,7 @@ class MainWindow(QMainWindow):
         self.app_state = app_state
         self.current_file = None
         self.settings = QSettings("MIT", "PinScope")
-        self.tcp = TcpClient(self)
+        self.tcp = TcpClient(self, debug=True)
 
         self.setWindowTitle("PinScope Control Panel - Untitled")
         self.resize(1100, 700)

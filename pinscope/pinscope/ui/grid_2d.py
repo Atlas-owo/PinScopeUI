@@ -1,8 +1,20 @@
 from __future__ import annotations
-from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsRectItem
+from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsTextItem
 from PySide6.QtCore import Qt, QRectF
-from PySide6.QtGui import QColor, QBrush, QPen, QPainter
+from PySide6.QtGui import QColor, QBrush, QPen, QPainter, QFont
 from ..app_state import AppState
+
+# One distinct color per module border
+_MODULE_COLORS = [
+    QColor(255,  80,  80),  # 1 red
+    QColor( 80, 160, 255),  # 2 blue
+    QColor( 80, 220,  80),  # 3 green
+    QColor(255, 180,  40),  # 4 orange
+    QColor(200,  80, 255),  # 5 purple
+    QColor( 40, 220, 220),  # 6 cyan
+    QColor(255, 255,  60),  # 7 yellow
+    QColor(255, 120, 200),  # 8 pink
+]
 
 class PinItem(QGraphicsRectItem):
     def __init__(self, index: int, x: float, y: float, size: float):
@@ -46,6 +58,40 @@ class Grid2D(QGraphicsView):
         self.app_state.selection_changed.connect(self._on_app_state_selection_changed)
 
     def _init_grid(self) -> None:
+        MARGIN = 4.0  # gap between module border and pin cells
+
+        # Draw module borders first (behind pins)
+        for mod_row in range(4):       # 4 rows of modules
+            for mod_col in range(2):   # 2 columns of modules
+                board_i = mod_row * 2 + mod_col + 1    # 1..8 (0 is broadcast)
+                color = _MODULE_COLORS[board_i - 1]
+
+                # Pin grid coords covered by this module
+                pin_row_start = mod_row * 2
+                pin_col_start = mod_col * 4
+
+                x = pin_col_start * (self.cell_size + self.padding) - MARGIN
+                y = pin_row_start * (self.cell_size + self.padding) - MARGIN
+                w = 4 * self.cell_size + 3 * self.padding + 2 * MARGIN
+                h = 2 * self.cell_size + 1 * self.padding + 2 * MARGIN
+
+                border = QGraphicsRectItem(QRectF(x, y, w, h))
+                pen = QPen(color, 2)
+                border.setPen(pen)
+                border.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+                border.setZValue(-1)
+                self.scene.addItem(border)
+
+                label = QGraphicsTextItem(f"B{board_i}")
+                label.setDefaultTextColor(color)
+                font = QFont()
+                font.setPointSize(7)
+                font.setBold(True)
+                label.setFont(font)
+                label.setPos(x + 2, y + 1)
+                label.setZValue(-1)
+                self.scene.addItem(label)
+
         for row in range(8):
             for col in range(8):
                 idx = row * 8 + col
@@ -54,7 +100,7 @@ class Grid2D(QGraphicsView):
                 item = PinItem(idx, x, y, self.cell_size)
                 self.scene.addItem(item)
                 self.pin_items.append(item)
-        
+
         self.setSceneRect(self.scene.itemsBoundingRect())
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
 

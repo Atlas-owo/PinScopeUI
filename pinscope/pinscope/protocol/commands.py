@@ -19,23 +19,23 @@ from ..model.design import Design
 #   2  4  6  8
 #
 # Derivation for pin at (row, col):
-#   board_i  = (row // 2) * 2 + (col // 4) + 1   →  1..8
+#   board_i  = (row // 2) * 2 + (col // 4) + 1    →  1..8  (0 is broadcast)
 #   motor_id = (col % 4) * 2 + (row % 2) + 1      →  1..8
 # ---------------------------------------------------------------------------
 
 def _pin_to_board(row: int, col: int) -> tuple[int, int]:
-    board_i = (row // 2) * 2 + (col // 4) + 1
-    motor_id = (col % 4) * 2 + (row % 2) + 1
+    board_i = (row // 2) * 2 + (col // 4) + 1      # 1-based: 1..8
+    motor_id = (col % 4) * 2 + (row % 2) + 1        # 1-based: 1..8
     return board_i, motor_id
 
 
 def _make_msg(i: int, s: int, h: list[int]) -> str:
-    return json.dumps({"i": i, "s": s, "h": h}, separators=(",", ":")) + "\n"
+    return json.dumps({"i": i, "s": s, "h": h}, separators=(",", ":"))
 
 
 def serialize_heights(design: Design) -> list[str]:
     """Return one s:1 message per board with the 8 pin heights in motor-ID order."""
-    # board_heights[board_i][motor_id] = height   (both 1-based)
+    # board_heights[board_i][motor_id] = height  (board 0-based, motor 1-based)
     board_heights: dict[int, dict[int, int]] = {i: {} for i in range(1, 9)}
 
     for idx, pin in enumerate(design.pins):
@@ -45,7 +45,6 @@ def serialize_heights(design: Design) -> list[str]:
 
     messages = []
     for board_i in range(1, 9):
-        # h array ordered by motor_id 1..8
         h = [board_heights[board_i].get(m, 0) for m in range(1, 9)]
         messages.append(_make_msg(board_i, 1, h))
     return messages
@@ -83,10 +82,8 @@ def serialize_gesture(design: Design) -> list[str]:
 
 
 def serialize_full_deploy(design: Design) -> list[str]:
-    """All messages needed for a full deploy: colors, heights, speed, gestures."""
+    """Heights and colors only. Speed and gesture are sent via dedicated buttons."""
     messages = []
-    messages += serialize_colors(design)
     messages += serialize_heights(design)
-    messages.append(serialize_motor_speed(design.motor_start_speed, design.motor_end_speed))
-    messages += serialize_gesture(design)
+    messages += serialize_colors(design)
     return messages

@@ -76,7 +76,7 @@ class View3D(QWidget):
         for row in range(8):
             for col in range(8):
                 x = col * CELL + half
-                y = row * CELL + half
+                y = (7 - row) * CELL + half
 
                 mesh = gl.GLMeshItem(meshdata=md, smooth=False, shader='shaded',
                                      glOptions='opaque')

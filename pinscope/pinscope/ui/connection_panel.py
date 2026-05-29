@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QColor
 from ..io.tcp_client import TcpClient
 from ..app_state import AppState
-from ..protocol.commands import serialize_full_deploy
+from ..protocol.commands import serialize_full_deploy, serialize_heights, serialize_colors, serialize_motor_speed, serialize_gesture
 
 DEFAULT_HOST = "192.168.0.10"
 DEFAULT_PORT = 5000
@@ -75,12 +75,26 @@ class ConnectionPanel(QWidget):
 
         layout.addSpacing(16)
 
-        # Deploy button
+        # Deploy button (heights + colors only)
         self.deploy_btn = QPushButton("Deploy")
         self.deploy_btn.setFixedWidth(80)
         self.deploy_btn.setEnabled(False)
         self.deploy_btn.clicked.connect(self._on_deploy)
         layout.addWidget(self.deploy_btn)
+
+        # Send Speed button
+        self.speed_btn = QPushButton("Send Speed")
+        self.speed_btn.setFixedWidth(90)
+        self.speed_btn.setEnabled(False)
+        self.speed_btn.clicked.connect(self._on_send_speed)
+        layout.addWidget(self.speed_btn)
+
+        # Send Gesture button
+        self.gesture_btn = QPushButton("Send Gesture")
+        self.gesture_btn.setFixedWidth(100)
+        self.gesture_btn.setEnabled(False)
+        self.gesture_btn.clicked.connect(self._on_send_gesture)
+        layout.addWidget(self.gesture_btn)
 
         layout.addStretch()
 
@@ -103,8 +117,16 @@ class ConnectionPanel(QWidget):
             self.tcp.connect_to(host, port)
 
     def _on_deploy(self):
-        messages = serialize_full_deploy(self.app_state.design)
-        self.tcp.send_all(messages)
+        design = self.app_state.design
+        self.tcp.send(";".join(serialize_heights(design)) + "\r\n")
+        self.tcp.send(";".join(serialize_colors(design)) + "\r\n")
+
+    def _on_send_speed(self):
+        d = self.app_state.design
+        self.tcp.send(serialize_motor_speed(d.motor_start_speed, d.motor_end_speed) + "\r\n")
+
+    def _on_send_gesture(self):
+        self.tcp.send(";".join(serialize_gesture(self.app_state.design)) + "\r\n")
 
     def _on_status_changed(self, status: str):
         self._apply_status(status)
@@ -117,6 +139,8 @@ class ConnectionPanel(QWidget):
         self.status_label.setText(_STATUS_LABEL.get(status, status))
         connected = (status == "connected")
         self.deploy_btn.setEnabled(connected)
+        self.speed_btn.setEnabled(connected)
+        self.gesture_btn.setEnabled(connected)
         self.connect_btn.setText("Disconnect" if connected else "Connect")
         # Disable host/port while connected or connecting
         editable = status in ("disconnected", "error")
