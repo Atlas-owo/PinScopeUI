@@ -49,6 +49,7 @@ PinScopeUI/
 │   └── tests/
 │       └── test_design.py
 ├── design/                     # Sample .pinscope.json files
+├── presets/                    # Built-in preset designs (Wave, Urban, Pyramid, etc.)
 ├── PinScope_SPEC.md            # Full technical specification
 └── Pin_control_manual.md       # Hardware protocol reference
 ```
@@ -95,9 +96,12 @@ python -m pinscope
 1. Ensure your machine is on the same network as the Master board (`192.168.0.x`)
 2. Open the app and design your pin layout
 3. In the connection bar at the bottom, click **Connect** — the status dot turns green when connected
-4. Click **Deploy** to send the full design to all 8 boards
+4. Use the three send buttons in the connection bar:
+   - **Deploy** — sends pin heights (s:1) and LED colors (s:9) for all 8 boards (72 commands in 2 batched messages)
+   - **Send Speed** — sends the motor ramp speed (s:5 broadcast)
+   - **Send Gesture** — sends push/pull gesture config (s:8 broadcast)
 
-The deploy sends 74 messages total: 64 LED color commands (s:9), 8 height commands (s:1), 1 motor speed command (s:5), and 1 gesture config command (s:8).
+Messages are sent as semicolon-delimited batches over TCP, terminated with `\r\n`.
 
 ## Design File Format
 
@@ -146,8 +150,8 @@ Mutations only happen through `AppState` methods: `set_pin()`, `set_pins()`, `se
 | M4 – Menu system + recent files | Done |
 | M5 – Globals panel (motor speed, gesture config) | Done |
 | M6 – TCP connection + deploy | Done |
-| M5 – Library/design browser panel | Planned |
-| M7 – Packaging + polish | Planned |
+| M7 – Library/design browser panel | Planned |
+| M8 – Packaging + polish | Planned |
 
 ## Running Tests
 
