@@ -77,7 +77,7 @@ pip install -e ".[dev]"
 Or with conda (recommended):
 
 ```bash
-conda activate figure
+conda activate <env-name>
 cd pinscope
 pip install -e ".[dev]"
 pip install PyOpenGL PyOpenGL_accelerate
@@ -86,7 +86,7 @@ pip install PyOpenGL PyOpenGL_accelerate
 ## Running
 
 ```bash
-conda activate figure
+conda activate <env-name>
 cd pinscope
 python -m pinscope
 ```
@@ -139,19 +139,6 @@ AppState
 ```
 
 Mutations only happen through `AppState` methods: `set_pin()`, `set_pins()`, `set_selection()`, `set_motor_speed()`, `set_push_config()`, `set_pull_config()`.
-
-## Development Status
-
-| Milestone | Status |
-|-----------|--------|
-| M1 – Project skeleton | Done |
-| M2 – 2D grid + 3D preview | Done |
-| M3 – Selection, inspector, file I/O | Done |
-| M4 – Menu system + recent files | Done |
-| M5 – Globals panel (motor speed, gesture config) | Done |
-| M6 – TCP connection + deploy | Done |
-| M7 – Library/design browser panel | Planned |
-| M8 – Packaging + polish | Planned |
 
 ## Running Tests
 
