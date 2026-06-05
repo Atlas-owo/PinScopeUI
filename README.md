@@ -140,6 +140,64 @@ AppState
 
 Mutations only happen through `AppState` methods: `set_pin()`, `set_pins()`, `set_selection()`, `set_motor_speed()`, `set_push_config()`, `set_pull_config()`.
 
+## Adding Custom Commands
+
+All hardware commands follow the same JSON wire format:
+
+```json
+{"i": <board_id>, "s": <command_code>, "h": [<8 integer values>]}
+```
+
+- `i` — board index: `1–8` targets a specific board, `0` is broadcast to all boards
+- `s` — command selector (see `Pin_control_manual.md` for the full list)
+- `h` — payload: always exactly 8 integers; unused slots are `0`
+
+**Step 1 — Add a serializer in `protocol/commands.py`:**
+
+```python
+def serialize_fan_temp(start_temp: int, stop_temp: int) -> str:
+    """s:7 broadcast — set fan on/off temperature thresholds."""
+    h = [start_temp, stop_temp, 0, 0, 0, 0, 0, 0]
+    return _make_msg(0, 7, h)
+```
+
+Use the existing `_make_msg(i, s, h)` helper, which handles JSON serialization.
+
+**Step 2 — Add a button in `ui/connection_panel.py`:**
+
+```python
+self.fan_btn = QPushButton("Send Fan Temp")
+self.fan_btn.setEnabled(False)
+self.fan_btn.clicked.connect(self._on_send_fan_temp)
+layout.addWidget(self.fan_btn)
+```
+
+Enable/disable it alongside the other buttons in `_apply_status()`:
+
+```python
+self.fan_btn.setEnabled(connected)
+```
+
+**Step 3 — Send the message:**
+
+```python
+def _on_send_fan_temp(self):
+    from ..protocol.commands import serialize_fan_temp
+    self.tcp.send(serialize_fan_temp(30, 50) + "\r\n")
+```
+
+Messages must be terminated with `\r\n`. To send multiple commands at once, join them with `;` before the terminator — see how `_on_deploy` batches heights and colors.
+
+**Existing command codes** (from `Pin_control_manual.md`):
+
+| Code | Function |
+|------|----------|
+| `s:1` | Move motors to target heights |
+| `s:5` | Set motor ramp speed |
+| `s:7` | Set fan temperature thresholds |
+| `s:8` | Configure push/pull gesture buttons |
+| `s:9` | Set individual motor LED color |
+
 ## Running Tests
 
 ```bash
