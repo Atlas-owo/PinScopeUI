@@ -96,6 +96,15 @@ class ConnectionPanel(QWidget):
         self.gesture_btn.clicked.connect(self._on_send_gesture)
         layout.addWidget(self.gesture_btn)
 
+        layout.addSpacing(16)
+
+        # Reset All button
+        self.reset_btn = QPushButton("Reset All")
+        self.reset_btn.setFixedWidth(90)
+        self.reset_btn.setStyleSheet("QPushButton { color: #c00; font-weight: bold; }")
+        self.reset_btn.clicked.connect(self._on_reset_all)
+        layout.addWidget(self.reset_btn)
+
         layout.addStretch()
 
         # Wire TCP signals
@@ -127,6 +136,13 @@ class ConnectionPanel(QWidget):
 
     def _on_send_gesture(self):
         self.tcp.send(";".join(serialize_gesture(self.app_state.design)) + "\r\n")
+
+    def _on_reset_all(self):
+        self.app_state.reset_all_pins()
+        if self.tcp.is_connected:
+            design = self.app_state.design
+            self.tcp.send(";".join(serialize_heights(design)) + "\r\n")
+            self.tcp.send(";".join(serialize_colors(design)) + "\r\n")
 
     def _on_status_changed(self, status: str):
         self._apply_status(status)

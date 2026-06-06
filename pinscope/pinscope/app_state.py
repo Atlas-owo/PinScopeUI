@@ -64,3 +64,9 @@ class AppState(QObject):
     def set_pull_config(self, config: GestureConfig) -> None:
         self._design.pull_config = config
         self.globals_changed.emit()
+
+    def reset_all_pins(self) -> None:
+        for i in range(64):
+            self._design.pins[i] = Pin(height=0, r=0, g=0, b=0)
+            self.pin_changed.emit(i)
+        self.design_changed.emit()
