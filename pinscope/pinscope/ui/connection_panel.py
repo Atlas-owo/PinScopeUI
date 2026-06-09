@@ -1,15 +1,18 @@
 from __future__ import annotations
+from pathlib import Path
 from PySide6.QtWidgets import (
-    QWidget, QHBoxLayout, QLabel, QLineEdit, QSpinBox, QPushButton,
+    QWidget, QHBoxLayout, QLabel, QLineEdit, QSpinBox, QPushButton, QMessageBox,
 )
-from PySide6.QtCore import Qt, QSettings
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QSettings, QTimer
 from ..io.tcp_client import TcpClient
 from ..app_state import AppState
-from ..protocol.commands import serialize_full_deploy, serialize_heights, serialize_colors, serialize_motor_speed, serialize_gesture
+from ..protocol.commands import serialize_heights, serialize_colors, serialize_motor_speed, serialize_gesture
+from ..io import design_io
 
 DEFAULT_HOST = "192.168.0.10"
 DEFAULT_PORT = 5000
+DEFAULT_CYCLE_SECONDS = 60
+CYCLE_DEMO_DIR = Path(__file__).resolve().parents[3] / "presets" / "cycle_demo"
 
 # Status dot colors
 _STATUS_STYLE = {
@@ -32,6 +35,10 @@ class ConnectionPanel(QWidget):
         self.app_state = app_state
         self.tcp = tcp_client
         self.settings = QSettings("MIT", "PinScope")
+        self.cycle_files: list[Path] = []
+        self.cycle_index = 0
+        self.cycle_timer = QTimer(self)
+        self.cycle_timer.timeout.connect(self._advance_cycle)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 4, 6, 4)
@@ -98,6 +105,25 @@ class ConnectionPanel(QWidget):
 
         layout.addSpacing(16)
 
+        layout.addWidget(QLabel("Cycle:"))
+        self.cycle_interval_spin = QSpinBox()
+        self.cycle_interval_spin.setRange(5, 3600)
+        self.cycle_interval_spin.setSuffix(" s")
+        self.cycle_interval_spin.setValue(
+            int(self.settings.value("cycle/interval_seconds", DEFAULT_CYCLE_SECONDS))
+        )
+        self.cycle_interval_spin.setFixedWidth(80)
+        self.cycle_interval_spin.valueChanged.connect(self._on_cycle_interval_changed)
+        layout.addWidget(self.cycle_interval_spin)
+
+        self.cycle_btn = QPushButton("Start")
+        self.cycle_btn.setCheckable(True)
+        self.cycle_btn.setFixedWidth(70)
+        self.cycle_btn.toggled.connect(self._on_cycle_toggled)
+        layout.addWidget(self.cycle_btn)
+
+        layout.addSpacing(16)
+
         # Reset All button
         self.reset_btn = QPushButton("Reset All")
         self.reset_btn.setFixedWidth(90)
@@ -126,6 +152,9 @@ class ConnectionPanel(QWidget):
             self.tcp.connect_to(host, port)
 
     def _on_deploy(self):
+        self._send_current_design()
+
+    def _send_current_design(self):
         design = self.app_state.design
         self.tcp.send(";".join(serialize_heights(design)) + "\r\n")
         self.tcp.send(";".join(serialize_colors(design)) + "\r\n")
@@ -138,11 +167,68 @@ class ConnectionPanel(QWidget):
         self.tcp.send(";".join(serialize_gesture(self.app_state.design)) + "\r\n")
 
     def _on_reset_all(self):
+        self.stop_cycle()
         self.app_state.reset_all_pins()
         if self.tcp.is_connected:
-            design = self.app_state.design
-            self.tcp.send(";".join(serialize_heights(design)) + "\r\n")
-            self.tcp.send(";".join(serialize_colors(design)) + "\r\n")
+            self._send_current_design()
+
+    def _on_cycle_interval_changed(self, seconds: int):
+        self.settings.setValue("cycle/interval_seconds", seconds)
+        if self.cycle_timer.isActive():
+            self.cycle_timer.setInterval(seconds * 1000)
+
+    def _on_cycle_toggled(self, checked: bool):
+        if checked:
+            self.start_cycle()
+        else:
+            self.stop_cycle()
+
+    def start_cycle(self):
+        self.cycle_files = sorted(CYCLE_DEMO_DIR.glob("*.pinscope.json"))
+        if not self.cycle_files:
+            self.cycle_btn.blockSignals(True)
+            self.cycle_btn.setChecked(False)
+            self.cycle_btn.blockSignals(False)
+            QMessageBox.warning(
+                self,
+                "No Cycle Patterns",
+                f"No .pinscope.json files found in:\n{CYCLE_DEMO_DIR}",
+            )
+            return
+
+        self.cycle_index = 0
+        self.cycle_btn.setText("Stop")
+        self.cycle_interval_spin.setEnabled(False)
+        if self._advance_cycle():
+            self.cycle_timer.start(self.cycle_interval_spin.value() * 1000)
+
+    def stop_cycle(self):
+        if self.cycle_timer.isActive():
+            self.cycle_timer.stop()
+        if self.cycle_btn.isChecked():
+            self.cycle_btn.blockSignals(True)
+            self.cycle_btn.setChecked(False)
+            self.cycle_btn.blockSignals(False)
+        self.cycle_btn.setText("Start")
+        self.cycle_interval_spin.setEnabled(True)
+
+    def _advance_cycle(self) -> bool:
+        if not self.cycle_files:
+            self.stop_cycle()
+            return False
+
+        file_path = self.cycle_files[self.cycle_index]
+        self.cycle_index = (self.cycle_index + 1) % len(self.cycle_files)
+        try:
+            self.app_state.set_design(design_io.load(file_path))
+        except Exception as e:
+            self.stop_cycle()
+            QMessageBox.critical(self, "Error Loading Cycle Pattern", f"{file_path.name}\n\n{e}")
+            return False
+
+        if self.tcp.is_connected:
+            self._send_current_design()
+        return True
 
     def _on_status_changed(self, status: str):
         self._apply_status(status)

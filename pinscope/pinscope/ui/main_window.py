@@ -103,6 +103,7 @@ class MainWindow(QMainWindow):
 
     def _load_file(self, file_path: str):
         try:
+            self.connection_panel.stop_cycle()
             design = design_io.load(file_path)
             self.app_state.set_design(design)
             self.current_file = file_path
