@@ -24,6 +24,9 @@ The physical installation is an 8×8 grid of motorized pins (40×40mm each, max 
 
 ```
 PinScopeUI/
+├── setup.sh                    # One-time setup script
+├── run.sh                      # Launch design mode
+├── run_touch.sh                # Launch touchscreen mode
 ├── pinscope/                   # Installable Python package
 │   ├── pyproject.toml
 │   ├── pinscope/               # Source code
@@ -45,11 +48,13 @@ PinScopeUI/
 │   │       ├── view_3d.py      # 3D pin preview (GLViewWidget)
 │   │       ├── inspector.py    # Height slider + color picker
 │   │       ├── globals_panel.py    # Motor speed + gesture config
-│   │       └── connection_panel.py # Host/port, connect, deploy
+│   │       ├── connection_panel.py # Host/port, connect, deploy
+│   │       └── touch_window.py     # Full-screen touchscreen mode
 │   └── tests/
 │       └── test_design.py
 ├── design/                     # Sample .pinscope.json files
 ├── presets/                    # Built-in preset designs (Wave, Urban, Pyramid, etc.)
+│   └── cycle_demo/             # Presets used by auto-cycle (01–05, loaded in order)
 ├── PinScope_SPEC.md            # Full technical specification
 └── Pin_control_manual.md       # Hardware protocol reference
 ```
@@ -69,27 +74,47 @@ Requires **Python 3.11+**.
 
 ## Installation
 
+Requires **Python 3.11+** (`python3 --version` to check).
+
+### Option A — setup script (no conda)
+
+Run once to create a local virtual environment and install all dependencies:
+
 ```bash
-cd pinscope
-pip install -e ".[dev]"
+./setup.sh
 ```
 
-Or with conda (recommended):
+Then use the launcher scripts:
 
 ```bash
-conda activate <env-name>
-cd pinscope
-pip install -e ".[dev]"
-pip install PyOpenGL PyOpenGL_accelerate
+./run.sh           # design mode
+./run_touch.sh     # touchscreen mode
+```
+
+### Option B — conda
+
+```bash
+conda create -n pinscope python=3.11 -y
+conda activate pinscope
+pip install PySide6 pyqtgraph numpy PyOpenGL
+```
+
+Then run directly:
+
+```bash
+conda activate pinscope
+python -m pinscope               # design mode
+python -m pinscope --touch       # touchscreen mode
 ```
 
 ## Running
 
 ```bash
-conda activate <env-name>
-cd pinscope
-python -m pinscope
+./run.sh           # design mode — full editor with 2D grid, inspector, file I/O
+./run_touch.sh     # touchscreen mode — full-screen 3D view with demo selector
 ```
+
+**Touchscreen mode** connects automatically to `192.168.0.10:5000`, shows the 5 cycle-demo presets as large tap targets, and supports auto-cycle. Press `Esc` to exit full screen.
 
 ## Deploying to Hardware
 
