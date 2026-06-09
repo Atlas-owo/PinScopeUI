@@ -18,7 +18,7 @@ KIOSK_HOST = "192.168.0.10"
 KIOSK_PORT = 5000
 CYCLE_DEMO_DIR = Path(__file__).resolve().parents[3] / "presets" / "cycle_demo"
 DEFAULT_CYCLE_SECONDS = 60
-TRANSITION_MS = 5000   # demo-switch height animation duration
+TRANSITION_MS = 4000   # demo-switch height animation duration
 TRANSITION_STEP_MS = 16  # ~60 fps
 
 _BG       = "#0d0d0d"
