@@ -2,14 +2,89 @@ from __future__ import annotations
 import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
+from pyqtgraph.opengl.shaders import ShaderProgram, VertexShader, FragmentShader
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton
 from ..app_state import AppState
 
 PIN_SIZE = 40
 PIN_GAP = 1
-CELL = PIN_SIZE + PIN_GAP   # 41 mm per cell
+CELL = PIN_SIZE + PIN_GAP
 MIN_VISUAL_H = 1.0
-GRID_EXTENT = 8 * CELL - PIN_GAP  # 327 mm (no trailing gap)
+GRID_EXTENT = 8 * CELL - PIN_GAP
+
+# Flat shader — renders face colors exactly as set, no lighting math on top.
+# Registered once at import time; safe to re-import (just overwrites the dict entry).
+ShaderProgram('flat', [
+    VertexShader("""
+        void main() {
+            gl_Position = ftransform();
+            gl_FrontColor = gl_Color;
+        }
+    """),
+    FragmentShader("""
+        void main() {
+            gl_FragColor = gl_FrontColor;
+        }
+    """),
+])
+
+# ── Box geometry ───────────────────────────────────────────────────────────────
+# Unit box: top verts at z=1, bottom at z=0. Height is baked per-update by
+# scaling the z column of a copy of _BASE_VERTS.
+
+_HALF = PIN_SIZE / 2.0
+
+_BASE_VERTS = np.array([
+    [ _HALF,  _HALF, 1.0],  # 0  top  NE
+    [ _HALF, -_HALF, 1.0],  # 1  top  SE
+    [-_HALF, -_HALF, 1.0],  # 2  top  SW
+    [-_HALF,  _HALF, 1.0],  # 3  top  NW
+    [ _HALF,  _HALF, 0.0],  # 4  bot  NE
+    [ _HALF, -_HALF, 0.0],  # 5  bot  SE
+    [-_HALF, -_HALF, 0.0],  # 6  bot  SW
+    [-_HALF,  _HALF, 0.0],  # 7  bot  NW
+], dtype=np.float32)
+
+_BASE_FACES = np.array([
+    [0, 1, 2], [0, 2, 3],   # top     (z+)
+    [4, 6, 5], [4, 7, 6],   # bottom  (z-)
+    [0, 4, 5], [0, 5, 1],   # east    (x+)
+    [1, 5, 6], [1, 6, 2],   # south   (y-)
+    [2, 6, 7], [2, 7, 3],   # west    (x-)
+    [3, 7, 4], [3, 4, 0],   # north   (y+)
+], dtype=np.uint32)
+
+# ── Per-face brightness ────────────────────────────────────────────────────────
+# Camera: elevation=30°, azimuth=-45° → sits in the +x, −y, +z direction.
+# Faces pointing toward the camera receive higher brightness.
+#   top:   fully lit from above
+#   east:  primary lit side (normal +x, camera is +x)
+#   south: secondary lit side (normal −y, camera is −y)
+#   north: partially shadowed (away from camera)
+#   west:  most shadowed (away from camera)
+#   bottom: nearly black (ground plane, never seen)
+
+_FACE_BRIGHTNESS = np.array([
+    1.00, 1.00,  # top
+    0.15, 0.15,  # bottom
+    0.72, 0.72,  # east   (x+)  lit
+    0.62, 0.62,  # south  (y-)  lit
+    0.36, 0.36,  # west   (x-)  shadow
+    0.44, 0.44,  # north  (y+)  shadow
+], dtype=np.float32)
+
+
+def _make_face_colors(r: int, g: int, b: int) -> np.ndarray:
+    base = np.array([r / 255.0, g / 255.0, b / 255.0], dtype=np.float32)
+    rgb = _FACE_BRIGHTNESS[:, np.newaxis] * base        # (12, 3)
+    return np.hstack([rgb, np.ones((12, 1), dtype=np.float32)])  # (12, 4)
+
+
+def _make_mesh_data(h: float, r: int, g: int, b: int) -> gl.MeshData:
+    verts = _BASE_VERTS.copy()
+    verts[:, 2] *= h    # scale z: top verts 1→h, bottom verts 0→0
+    return gl.MeshData(vertexes=verts, faces=_BASE_FACES,
+                       faceColors=_make_face_colors(r, g, b))
 
 
 class View3D(QWidget):
@@ -28,7 +103,7 @@ class View3D(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.gl_widget = gl.GLViewWidget()
-        self.gl_widget.setBackgroundColor((80, 80, 80, 255))
+        self.gl_widget.setBackgroundColor((20, 20, 20, 255))
         layout.addWidget(self.gl_widget)
 
         self.reset_btn = QPushButton("Reset Camera", self.gl_widget)
@@ -41,58 +116,23 @@ class View3D(QWidget):
         grid = gl.GLGridItem()
         grid.setSize(GRID_EXTENT, GRID_EXTENT)
         grid.setSpacing(CELL, CELL)
-        grid.setColor((200, 200, 200, 80))
+        grid.setColor((60, 60, 60, 120))
         grid.translate(GRID_EXTENT / 2, GRID_EXTENT / 2, 0)
         self.gl_widget.addItem(grid)
 
-        self.pin_items = []  # (x, y, mesh, edges)
-
-        half = PIN_SIZE / 2
-
-        verts = np.array([
-            [ half,  half, 1.0], [ half, -half, 1.0], [-half, -half, 1.0], [-half,  half, 1.0],
-            [ half,  half, 0.0], [ half, -half, 0.0], [-half, -half, 0.0], [-half,  half, 0.0],
-        ], dtype=float)
-        faces = np.array([
-            [0, 1, 2], [0, 2, 3],
-            [4, 6, 5], [4, 7, 6],
-            [0, 4, 5], [0, 5, 1],
-            [1, 5, 6], [1, 6, 2],
-            [2, 6, 7], [2, 7, 3],
-            [3, 7, 4], [3, 4, 0],
-        ])
-        md = gl.MeshData(vertexes=verts, faces=faces)
-
-        edge_pairs = [
-            (0,1),(1,2),(2,3),(3,0),
-            (4,5),(5,6),(6,7),(7,4),
-            (0,4),(1,5),(2,6),(3,7),
-        ]
-        edge_pts = np.array(
-            [pt for a, b in edge_pairs for pt in (verts[a], verts[b])],
-            dtype=float,
-        )
+        self.pin_items: list[tuple] = []  # (x, y, mesh)
 
         for row in range(8):
             for col in range(8):
-                x = col * CELL + half
-                y = (7 - row) * CELL + half
+                x = col * CELL + _HALF
+                y = (7 - row) * CELL + _HALF
 
-                mesh = gl.GLMeshItem(meshdata=md, smooth=False, shader='shaded',
-                                     glOptions='opaque')
+                md = _make_mesh_data(MIN_VISUAL_H, 0, 0, 0)
+                mesh = gl.GLMeshItem(meshdata=md, smooth=False,
+                                     shader='flat', glOptions='opaque')
+                mesh.translate(x, y, 0)
                 self.gl_widget.addItem(mesh)
-
-                edges = gl.GLLinePlotItem(
-                    pos=edge_pts.copy(),
-                    color=(0.2, 0.2, 0.2, 1.0),
-                    width=1.2,
-                    mode='lines',
-                    antialias=True,
-                )
-                edges.setGLOptions('opaque')
-                self.gl_widget.addItem(edges)
-
-                self.pin_items.append((x, y, mesh, edges))
+                self.pin_items.append((x, y, mesh))
 
         self._on_design_changed()
 
@@ -103,18 +143,12 @@ class View3D(QWidget):
 
     def _update_pin_visuals(self, index: int):
         pin = self.app_state.design.pins[index]
-        x, y, mesh, edges = self.pin_items[index]
+        x, y, mesh = self.pin_items[index]
 
         h = max(float(pin.height), MIN_VISUAL_H)
-
-        mesh.setColor((pin.r / 255.0, pin.g / 255.0, pin.b / 255.0, 1.0))
+        mesh.setMeshData(meshdata=_make_mesh_data(h, pin.r, pin.g, pin.b))
         mesh.resetTransform()
-        mesh.scale(1, 1, h)
         mesh.translate(x, y, 0)
-
-        edges.resetTransform()
-        edges.scale(1, 1, h)
-        edges.translate(x, y, 0)
 
     def _on_design_changed(self):
         for i in range(64):
