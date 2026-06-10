@@ -261,7 +261,7 @@ class TouchWindow(QMainWindow):
         self._reconnect_timer.timeout.connect(self._try_reconnect)
 
         self._anim_timer = QTimer(self)
-        self._anim_timer.setInterval(20)
+        self._anim_timer.setInterval(30)
         self._anim_timer.timeout.connect(self._anim_step)
         self._anim_index: int = 0
         self._anim_mode: str = 'color'        # 'color' | 'demo'
