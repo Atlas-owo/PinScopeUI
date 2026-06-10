@@ -594,21 +594,27 @@ class TouchWindow(QMainWindow):
 
     def _anim_step(self) -> None:
         i = self._anim_index
-        if i >= 64:
+        if i >= 32:
             self._anim_timer.stop()
             return
 
+        # Two simultaneous column sweeps: left half (cols 0-3) and right half
+        # (cols 4-7), each going top-to-bottom column by column.
+        col = i // 8       # 0-3: which column within each half
+        row = i % 8        # 0-7: which row
+        left_pin  = row * 8 + col
+        right_pin = row * 8 + col + 4
+
         design = self.app_state.design
         if self._anim_mode == 'color':
-            # Design already has final colors; just reveal them one pin at a time.
-            # TCP messages were already queued atomically in _on_change_color.
-            self.app_state.pin_changed.emit(i)
+            self.app_state.pin_changed.emit(left_pin)
+            self.app_state.pin_changed.emit(right_pin)
         else:  # 'demo'
-            # Sweep in the new color while keeping the current interpolated height.
-            r, g, b = self._anim_new_colors[i]
-            p = design.pins[i]
-            design.pins[i] = Pin(p.height, r, g, b)
-            self.app_state.pin_changed.emit(i)
+            for pin_idx in (left_pin, right_pin):
+                r, g, b = self._anim_new_colors[pin_idx]
+                p = design.pins[pin_idx]
+                design.pins[pin_idx] = Pin(p.height, r, g, b)
+                self.app_state.pin_changed.emit(pin_idx)
 
         self._anim_index += 1
 
