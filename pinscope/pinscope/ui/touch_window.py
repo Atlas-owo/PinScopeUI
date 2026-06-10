@@ -261,9 +261,8 @@ class TouchWindow(QMainWindow):
         self._reconnect_timer.timeout.connect(self._try_reconnect)
 
         self._anim_timer = QTimer(self)
-        self._anim_timer.setInterval(20)   # 20 ms — matches TCP queue flush rate
+        self._anim_timer.setInterval(20)
         self._anim_timer.timeout.connect(self._anim_step)
-        self._anim_color_msgs: list[str] = []
         self._anim_index: int = 0
         self._anim_mode: str = 'color'        # 'color' | 'demo'
         self._anim_new_colors: list[tuple] = []  # (r, g, b) per pin, used in demo mode
@@ -585,8 +584,9 @@ class TouchWindow(QMainWindow):
                 r, g, b = _gradient_color(base.height, theme["stops"])
                 design.pins[i] = Pin(base.height, r, g, b)
 
-        # Pre-compute per-pin color commands once, in send order (index 0→63).
-        self._anim_color_msgs = serialize_colors(design)
+        if self.tcp.is_connected:
+            self.tcp.send(";".join(serialize_colors(design)) + "\r\n")
+
         self._anim_mode = 'color'
         self._anim_index = 0
         self._anim_timer.start()
@@ -601,9 +601,8 @@ class TouchWindow(QMainWindow):
         design = self.app_state.design
         if self._anim_mode == 'color':
             # Design already has final colors; just reveal them one pin at a time.
+            # TCP messages were already queued atomically in _on_change_color.
             self.app_state.pin_changed.emit(i)
-            if self.tcp.is_connected:
-                self.tcp.send(self._anim_color_msgs[i] + "\r\n")
         else:  # 'demo'
             # Sweep in the new color while keeping the current interpolated height.
             r, g, b = self._anim_new_colors[i]
