@@ -1,8 +1,10 @@
 from __future__ import annotations
+import math
 import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
-from pyqtgraph.opengl.shaders import ShaderProgram, VertexShader, FragmentShader
+from PySide6.QtCore import Qt, QEvent
+from PySide6.QtGui import QEventPoint
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton
 from ..app_state import AppState
 
@@ -11,22 +13,6 @@ PIN_GAP = 1
 CELL = PIN_SIZE + PIN_GAP
 MIN_VISUAL_H = 1.0
 GRID_EXTENT = 8 * CELL - PIN_GAP
-
-# Flat shader — renders face colors exactly as set, no lighting math on top.
-# Registered once at import time; safe to re-import (just overwrites the dict entry).
-ShaderProgram('flat', [
-    VertexShader("""
-        void main() {
-            gl_Position = ftransform();
-            gl_FrontColor = gl_Color;
-        }
-    """),
-    FragmentShader("""
-        void main() {
-            gl_FragColor = gl_FrontColor;
-        }
-    """),
-])
 
 # ── Box geometry ───────────────────────────────────────────────────────────────
 # Unit box: top verts at z=1, bottom at z=0. Height is baked per-update by
@@ -52,7 +38,7 @@ _BASE_FACES = np.array([
     [1, 5, 6], [1, 6, 2],   # south   (y-)
     [2, 6, 7], [2, 7, 3],   # west    (x-)
     [3, 7, 4], [3, 4, 0],   # north   (y+)
-], dtype=np.uint32)
+], dtype=np.int32)
 
 # ── Per-face brightness ────────────────────────────────────────────────────────
 # Camera: elevation=30°, azimuth=-45° → sits in the +x, −y, +z direction.
@@ -83,8 +69,51 @@ def _make_face_colors(r: int, g: int, b: int) -> np.ndarray:
 def _make_mesh_data(h: float, r: int, g: int, b: int) -> gl.MeshData:
     verts = _BASE_VERTS.copy()
     verts[:, 2] *= h    # scale z: top verts 1→h, bottom verts 0→0
-    return gl.MeshData(vertexes=verts, faces=_BASE_FACES,
+    return gl.MeshData(vertexes=verts, faces=_BASE_FACES.copy(),
                        faceColors=_make_face_colors(r, g, b))
+
+
+class TouchGLViewWidget(gl.GLViewWidget):
+    """GLViewWidget with touch support.
+
+    1 finger  → orbit   (same as left-mouse drag)
+    2 fingers → pinch to zoom + two-finger pan
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
+
+    def event(self, ev):
+        t = ev.type()
+        if t in (QEvent.Type.TouchBegin, QEvent.Type.TouchUpdate, QEvent.Type.TouchEnd):
+            ev.accept()
+            if t == QEvent.Type.TouchUpdate:
+                self._on_touch_update(ev)
+            return True
+        return super().event(ev)
+
+    def _on_touch_update(self, ev):
+        active = [p for p in ev.points()
+                  if p.state() != QEventPoint.State.Released]
+
+        if len(active) >= 2:
+            p0, p1 = active[0], active[1]
+            c0, c1 = p0.position(), p1.position()
+            l0, l1 = p0.lastPosition(), p1.lastPosition()
+
+            # pinch-to-zoom: scale distance by change in finger span
+            cur_span = math.hypot(c1.x() - c0.x(), c1.y() - c0.y())
+            prv_span = math.hypot(l1.x() - l0.x(), l1.y() - l0.y())
+            if prv_span > 1.0:
+                self.opts['distance'] *= prv_span / cur_span
+
+        elif len(active) == 1:
+            p = active[0]
+            diff = p.position() - p.lastPosition()
+            self.orbit(-diff.x() * 0.1, diff.y() * 0.1)
+
+        self.update()
 
 
 class View3D(QWidget):
@@ -102,7 +131,7 @@ class View3D(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self.gl_widget = gl.GLViewWidget()
+        self.gl_widget = TouchGLViewWidget()
         self.gl_widget.setBackgroundColor((20, 20, 20, 255))
         layout.addWidget(self.gl_widget)
 
@@ -129,7 +158,7 @@ class View3D(QWidget):
 
                 md = _make_mesh_data(MIN_VISUAL_H, 0, 0, 0)
                 mesh = gl.GLMeshItem(meshdata=md, smooth=False,
-                                     shader='flat', glOptions='opaque')
+                                     shader=None, glOptions='opaque')
                 mesh.translate(x, y, 0)
                 self.gl_widget.addItem(mesh)
                 self.pin_items.append((x, y, mesh))
@@ -143,12 +172,10 @@ class View3D(QWidget):
 
     def _update_pin_visuals(self, index: int):
         pin = self.app_state.design.pins[index]
-        x, y, mesh = self.pin_items[index]
+        _, _, mesh = self.pin_items[index]
 
         h = max(float(pin.height), MIN_VISUAL_H)
         mesh.setMeshData(meshdata=_make_mesh_data(h, pin.r, pin.g, pin.b))
-        mesh.resetTransform()
-        mesh.translate(x, y, 0)
 
     def _on_design_changed(self):
         for i in range(64):
